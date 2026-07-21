@@ -12,6 +12,7 @@ function onOpen() {
     .addItem('9. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
     .addSeparator()
     .addItem('Chạy toàn bộ mô hình', 'FS_chayToanBo')
+    .addItem('Chạy 2 kịch bản NN / TT', 'FS_chayHaiKichBanNN_TT')
     .addSeparator()
     .addItem('Phân tích hiệu quả từng sản phẩm', 'FS00H_phanTichVaDinhDangTheoSanPham')
     .addItem('Tạo bảng kiểm tra IRR sản phẩm', 'FS00G_taoBangDebugIRR')
