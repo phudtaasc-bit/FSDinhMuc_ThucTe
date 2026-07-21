@@ -11,21 +11,42 @@ function onOpen() {
     .addItem('8. Lập bảng độ nhạy', 'FS05_lapBangDoNhay_AnToan')
     .addItem('9. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
     .addSeparator()
-    .addItem('Chạy toàn bộ mô hình', 'FS_chayToanBo')
-    .addItem('Chạy 2 kịch bản NN / TT', 'FS_chayHaiKichBanNN_TT')
+    .addItem('Chạy toàn bộ mô hình - Định mức (NN)', 'FS_chayToanBo')
+    .addItem('Chạy toàn bộ mô hình - Thực tế (TT)', 'FS_chayToanBoThucTe')
     .addSeparator()
     .addItem('Phân tích hiệu quả từng sản phẩm', 'FS00H_phanTichVaDinhDangTheoSanPham')
     .addItem('Tạo bảng kiểm tra IRR sản phẩm', 'FS00G_taoBangDebugIRR')
     .addToUi();
 }
 
+/**
+ * Chạy toàn bộ mô hình theo nguồn Định mức (NN).
+ * Kết quả giữ tại sheet 00. Tổng hợp.
+ */
 function FS_chayToanBo() {
-  FS_capNhatKyThuat();
+  FS_taoKyThuatTuDauVao('NN');
+  SpreadsheetApp.flush();
   FS_lapSheet02();
   FS_lapSheet03();
   FS_hoiTuTaiTro();
   if (typeof FS_lapSheet04A === 'function') FS_lapSheet04A();
   if (typeof FS_lapSheet00_TheoDanhMuc === 'function') FS_lapSheet00_TheoDanhMuc();
+  if (typeof FS00I_phanTichHieuQuaTheoSanPham === 'function') {
+    FS00I_phanTichHieuQuaTheoSanPham();
+  } else if (typeof FS00F_phanTichHieuQuaTheoSanPham === 'function') {
+    FS00F_phanTichHieuQuaTheoSanPham();
+  }
   FS_lapSheet99();
-  SpreadsheetApp.getUi().alert('Đã chạy xong mô hình và kiểm tra.');
+  if (typeof FSNT_assertNoFail_ === 'function') FSNT_assertNoFail_();
+  if (typeof FSNT_markSummary_ === 'function') FSNT_markSummary_('00. Tổng hợp', 'NN');
+  SpreadsheetApp.getUi().alert('Đã chạy xong mô hình theo nguồn Định mức (NN) và kiểm tra Sheet 99.');
+}
+
+/**
+ * Chạy toàn bộ mô hình theo nguồn Thực tế (TT).
+ * Kết quả được chốt tại sheet 00.Tổng hợp_thực tế.
+ */
+function FS_chayToanBoThucTe() {
+  FS_chayKichBanThucTe();
+  SpreadsheetApp.getUi().alert('Đã chạy xong mô hình theo nguồn Thực tế (TT), chốt tại 00.Tổng hợp_thực tế và kiểm tra Sheet 99.');
 }
