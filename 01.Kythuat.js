@@ -2,7 +2,9 @@ const FS01A_CFG = Object.freeze({
   INPUT: '01. Đầu vào',
   TECH: '01A. Kỹ thuật',
   TECH_LEGACY: '01. Kỹ thuật',
-  MENU: 'FS - CẬP NHẬT MÔ HÌNH'
+  MENU: 'FS - CẬP NHẬT MÔ HÌNH',
+  SCENARIO_NN: 'NN',
+  SCENARIO_TT: 'TT'
 });
 
 function onOpen() {
@@ -23,7 +25,7 @@ function onOpen() {
 }
 
 function FS_chayToanBoMoHinh() {
-  FS_taoKyThuatTuDauVao();
+  FS_taoKyThuatTuDauVao(FS01A_CFG.SCENARIO_NN);
   ['FS_lapSheet02', 'FS_lapSheet03', 'FS_lapSheet03A', 'FS_lapSheet04', 'FS_lapSheet04A', 'FS_lapSheet00', 'FS_lapSheet99']
     .forEach(FS01A_runIfExists_);
 }
@@ -33,7 +35,16 @@ function FS01A_runIfExists_(functionName) {
   if (typeof fn === 'function') fn();
 }
 
-function FS_taoKyThuatTuDauVao() {
+function FS_taoKyThuatDinhMuc() {
+  return FS_taoKyThuatTuDauVao(FS01A_CFG.SCENARIO_NN);
+}
+
+function FS_taoKyThuatThucTe() {
+  return FS_taoKyThuatTuDauVao(FS01A_CFG.SCENARIO_TT);
+}
+
+function FS_taoKyThuatTuDauVao(kichBan) {
+  const scenario = FS01A_scenario_(kichBan);
   const ss = SpreadsheetApp.getActive();
   const input = ss.getSheetByName(FS01A_CFG.INPUT);
   let tech = ss.getSheetByName(FS01A_CFG.TECH);
@@ -50,11 +61,10 @@ function FS_taoKyThuatTuDauVao() {
   tech.clearFormats();
 
   let row = 1;
-  row = FS01A_writeInfo_(input, tech, row) + 2;
-  row = FS01A_writeTable_(input, tech, row, 'CHI_PHI_CHUNG', 'C. CHI PHÍ CHUNG', 'Khoản mục',
-    ['Khoản mục', 'Trước VAT', 'VAT đầu vào', 'Sau VAT', 'Ghi chú', 'Tỷ lệ']) + 2;
+  row = FS01A_writeInfo_(input, tech, row, scenario) + 2;
+  row = FS01A_writeCostsByScenario_(input, tech, row, scenario) + 2;
 
-  const productIndex = FS01A_writeProducts_(input, tech, row);
+  const productIndex = FS01A_writeProducts_(input, tech, row, scenario);
   row = productIndex.nextRow + 2;
 
   row = FS01A_writePlans_(input, tech, row, productIndex.byCode, productIndex.codeByName) + 2;
@@ -63,11 +73,12 @@ function FS_taoKyThuatTuDauVao() {
     ['Khoản mục', 'Tháng bắt đầu', 'Thời gian', 'Tỷ lệ', 'Loại']);
 
   FS01A_format_(tech);
+  tech.getRange('A1').setNote('Kịch bản chi phí hiện hành: ' + scenario);
   SpreadsheetApp.flush();
-  SpreadsheetApp.getUi().alert('Đã tạo lại sheet "01A. Kỹ thuật" theo cấu trúc chuẩn.');
+  return { scenario, sheet: tech.getName() };
 }
 
-function FS01A_writeInfo_(input, tech, startRow) {
+function FS01A_writeInfo_(input, tech, startRow, scenario) {
   const fields = [
     ['Tên dự án', 'A. THÔNG TIN CHUNG', 'text'],
     ['Ngày bắt đầu dự án', 'A. THÔNG TIN CHUNG', 'date'],
@@ -87,6 +98,7 @@ function FS01A_writeInfo_(input, tech, startRow) {
   ];
 
   const out = [['THONG_TIN_CHUNG', 'GIÁ TRỊ', 'Ô NGUỒN', 'KIỂU DỮ LIỆU']];
+  out.push(['Kịch bản chi phí', scenario, '', 'text']);
   fields.forEach(([label, section, type]) => {
     const cell = FS01A_findValueCell_(input, section, label);
     out.push([label, cell ? cell.getValue() : '', cell ? cell.getA1Notation() : '', type]);
@@ -94,6 +106,65 @@ function FS01A_writeInfo_(input, tech, startRow) {
 
   tech.getRange(startRow, 1, out.length, 4).setValues(out);
   return startRow + out.length;
+}
+
+function FS01A_writeCostsByScenario_(input, tech, startRow, scenario) {
+  const sectionRow = FS01A_findRow_(input, 'C. CHI PHÍ CHUNG');
+  if (!sectionRow) throw new Error('Không tìm thấy mục C. CHI PHÍ CHUNG tại 01. Đầu vào.');
+
+  const headerRow = FS01A_findHeaderRow_(input, 'Khoản mục', sectionRow);
+  if (!headerRow) throw new Error('Không tìm thấy hàng tiêu đề Khoản mục tại mục C.');
+
+  const lastCol = FS01A_lastCol_(input, headerRow);
+  const headers = input.getRange(headerRow, 1, 1, lastCol).getDisplayValues()[0];
+  const headerKeys = headers.map(FS01A_key_);
+  const itemCol = headerKeys.indexOf(FS01A_key_('Khoản mục'));
+  const codeCol = headerKeys.indexOf(FS01A_key_('Mã khoản mục'));
+  const beforeCols = FS01A_allIndexes_(headerKeys, FS01A_key_('Trước VAT'));
+  const vatCols = FS01A_allIndexes_(headerKeys, FS01A_key_('VAT đầu vào'));
+  const afterCols = FS01A_allIndexes_(headerKeys, FS01A_key_('Sau VAT'));
+  const noteCols = FS01A_allIndexes_(headerKeys, FS01A_key_('Ghi chú'));
+  const rateCols = FS01A_allIndexes_(headerKeys, FS01A_key_('Tỷ lệ'));
+  const scenarioIndex = scenario === FS01A_CFG.SCENARIO_TT ? 1 : 0;
+
+  if (itemCol < 0 || beforeCols.length < 2 || vatCols.length < 2 || afterCols.length < 2 || noteCols.length < 2 || rateCols.length < 2) {
+    throw new Error('Bảng C phải có đủ hai nhóm cột Theo Định mức và Thực tế.');
+  }
+
+  const out = [[
+    'Khoản mục', 'Trước VAT', 'VAT đầu vào', 'Sau VAT', 'Ghi chú', 'Tỷ lệ',
+    'Mã khoản mục', 'Kịch bản'
+  ]];
+
+  let blankCount = 0;
+  for (let r = headerRow + 1; r <= input.getLastRow(); r++) {
+    const display = input.getRange(r, 1, 1, lastCol).getDisplayValues()[0];
+    if (display.some(v => /^[A-Z]\./.test(String(v).trim()))) break;
+    if (!display.some(v => String(v).trim())) {
+      if (++blankCount >= 3) break;
+      continue;
+    }
+    blankCount = 0;
+
+    const values = input.getRange(r, 1, 1, lastCol).getValues()[0];
+    const item = values[itemCol];
+    if (!String(item || '').trim()) continue;
+
+    out.push([
+      item,
+      values[beforeCols[scenarioIndex]],
+      values[vatCols[scenarioIndex]],
+      values[afterCols[scenarioIndex]],
+      values[noteCols[scenarioIndex]],
+      values[rateCols[scenarioIndex]],
+      codeCol >= 0 ? values[codeCol] : '',
+      scenario
+    ]);
+  }
+
+  tech.getRange(startRow, 1).setValue('CHI_PHI_CHUNG');
+  tech.getRange(startRow + 1, 1, out.length, out[0].length).setValues(out);
+  return startRow + 1 + out.length;
 }
 
 function FS01A_writeTable_(input, tech, startRow, title, section, header, headersOut) {
@@ -111,7 +182,7 @@ function FS01A_writeTable_(input, tech, startRow, title, section, header, header
   return startRow + 1 + out.length;
 }
 
-function FS01A_writeProducts_(input, tech, startRow) {
+function FS01A_writeProducts_(input, tech, startRow, scenario) {
   const table = FS01A_readTable_(input, 'D. CHI TIẾT SẢN PHẨM', 'Loại sản phẩm');
   tech.getRange(startRow, 1).setValue('SAN_PHAM');
   if (!table) throw new Error('Không tìm thấy bảng D. CHI TIẾT SẢN PHẨM.');
@@ -125,6 +196,9 @@ function FS01A_writeProducts_(input, tech, startRow) {
   const out = [headers];
   const byCode = {};
   const codeByName = {};
+  const cpxdCandidates = scenario === FS01A_CFG.SCENARIO_TT
+    ? ['CPXD/m2_TT', 'CPXD/m²_TT', 'CPXD TT/m2', 'CPXD TT/m²']
+    : ['CPXD/m2_ĐM', 'CPXD/m²_ĐM', 'CPXD/m2_DM', 'CPXD/m²_DM', 'CPXD NN/m2', 'CPXD NN/m²'];
 
   table.rows.forEach(row => {
     const code = String(FS01A_get_(row, table.headers, ['Mã SP', 'Mã sản phẩm']) || '').trim().toUpperCase();
@@ -150,7 +224,7 @@ function FS01A_writeProducts_(input, tech, startRow) {
       FS01A_get_(row, table.headers, ['DTKD', 'Diện tích kinh doanh']),
       FS01A_get_(row, table.headers, ['Giá bán trước thuế/m2', 'Giá bán trước thuế/m²', 'Giá bán/m2', 'Giá bán']),
       FS01A_get_(row, table.headers, ['Giá thuê/m2/tháng', 'Giá thuê/m²/tháng', 'Giá thuê/m2/th', 'Giá thuê']),
-      FS01A_get_(row, table.headers, ['CPXD/m2', 'CPXD/m²', 'Chi phí XD/m2', 'Suất CPXD', 'CPXD']),
+      FS01A_get_(row, table.headers, cpxdCandidates.concat(['CPXD/m2', 'CPXD/m²', 'Chi phí XD/m2', 'Suất CPXD', 'CPXD'])),
       FS01A_get_(row, table.headers, ['VAT đầu ra', 'VAT']),
       FS01A_get_(row, table.headers, ['Thuế TNDN', 'TNDN']),
       FS01A_get_(row, table.headers, ['Lấp đầy', 'Lấp đầy thuê', 'Tỷ lệ lấp đầy']),
@@ -288,6 +362,22 @@ function FS01A_get_(row, headers, candidates) {
   return '';
 }
 
+function FS01A_allIndexes_(values, target) {
+  const indexes = [];
+  values.forEach((value, index) => {
+    if (value === target) indexes.push(index);
+  });
+  return indexes;
+}
+
+function FS01A_scenario_(value) {
+  const key = String(value || FS01A_CFG.SCENARIO_NN).trim().toUpperCase();
+  if (key !== FS01A_CFG.SCENARIO_NN && key !== FS01A_CFG.SCENARIO_TT) {
+    throw new Error('Kịch bản chi phí chỉ nhận NN hoặc TT. Giá trị nhận được: ' + value);
+  }
+  return key;
+}
+
 function FS01A_format_(sheet) {
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
@@ -328,7 +418,7 @@ function FS01A_format_(sheet) {
   sheet.setColumnWidth(4, 90);
   sheet.setColumnWidth(5, 145);
   sheet.setColumnWidth(6, 135);
-  sheet.setColumnWidth(7, 95);
+  sheet.setColumnWidth(7, 105);
   sheet.setColumnWidths(8, 3, 95);
   sheet.setColumnWidth(11, 125);
   sheet.setColumnWidth(12, 125);
