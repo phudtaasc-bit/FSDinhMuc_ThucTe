@@ -8,33 +8,30 @@ const FSNT_CFG = Object.freeze({
  * Chạy toàn bộ mô hình theo hai nguồn chi phí trên cùng một bộ sheet trung gian.
  * - Chạy TT trước, chốt kết quả sang 00.Tổng hợp_thực tế.
  * - Chạy NN sau cùng, giữ trạng thái mô hình hiện hành tại 00. Tổng hợp.
+ *
+ * Không giữ DocumentLock ở hàm bao ngoài vì một số hàm lõi tự quản lý khóa.
+ * Giữ khóa bao ngoài sẽ gây deadlock/timeout khi chạy chuỗi hai kịch bản.
  */
 function FS_chayHaiKichBanNN_TT() {
   const ss = SpreadsheetApp.getActive();
-  const lock = LockService.getDocumentLock();
-  lock.waitLock(30000);
 
-  try {
-    ss.toast('Đang chạy kịch bản Thực tế...', 'FS NN/TT', 5);
-    FSNT_runScenario_('TT');
-    FSNT_assertNoFail_();
-    FSNT_snapshotSummary_(FSNT_CFG.SUMMARY_TT, 'TT');
+  ss.toast('Đang chạy kịch bản Thực tế...', 'FS NN/TT', 5);
+  FSNT_runScenario_('TT');
+  FSNT_assertNoFail_();
+  FSNT_snapshotSummary_(FSNT_CFG.SUMMARY_TT, 'TT');
 
-    ss.toast('Đang chạy kịch bản Định mức...', 'FS NN/TT', 5);
-    FSNT_runScenario_('NN');
-    FSNT_assertNoFail_();
-    FSNT_markSummary_(FSNT_CFG.SUMMARY_NN, 'NN');
+  ss.toast('Đang chạy kịch bản Định mức...', 'FS NN/TT', 5);
+  FSNT_runScenario_('NN');
+  FSNT_assertNoFail_();
+  FSNT_markSummary_(FSNT_CFG.SUMMARY_NN, 'NN');
 
-    SpreadsheetApp.flush();
-    SpreadsheetApp.getUi().alert(
-      'Đã hoàn thành hai kịch bản:\n' +
-      '- 00. Tổng hợp: nguồn Định mức (NN)\n' +
-      '- 00.Tổng hợp_thực tế: nguồn Thực tế (TT)\n' +
-      '- Sheet 99 không có FAIL ở lần chạy cuối.'
-    );
-  } finally {
-    lock.releaseLock();
-  }
+  SpreadsheetApp.flush();
+  SpreadsheetApp.getUi().alert(
+    'Đã hoàn thành hai kịch bản:\n' +
+    '- 00. Tổng hợp: nguồn Định mức (NN)\n' +
+    '- 00.Tổng hợp_thực tế: nguồn Thực tế (TT)\n' +
+    '- Sheet 99 không có FAIL ở lần chạy cuối.'
+  );
 }
 
 function FS_chayKichBanDinhMuc() {
