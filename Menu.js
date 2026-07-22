@@ -19,35 +19,12 @@ function onOpen() {
     .addToUi();
 }
 
-/**
- * Chạy toàn bộ mô hình theo nguồn Định mức (NN).
- * Kết quả giữ tại sheet 00. Tổng hợp.
- */
+/** Chạy và chốt mô hình Định mức (NN). */
 function FS_chayToanBo() {
-  FS_taoKyThuatTuDauVao('NN');
-  SpreadsheetApp.flush();
-  FS_lapSheet02();
-  FS_lapSheet03();
-  FS_hoiTuTaiTro();
-  if (typeof FS_lapSheet04A === 'function') FS_lapSheet04A();
-  if (typeof FS_lapSheet00_TheoDanhMuc === 'function') FS_lapSheet00_TheoDanhMuc();
-  if (typeof FS00I_phanTichHieuQuaTheoSanPham === 'function') {
-    FS00I_phanTichHieuQuaTheoSanPham();
-  } else if (typeof FS00F_phanTichHieuQuaTheoSanPham === 'function') {
-    FS00F_phanTichHieuQuaTheoSanPham();
-  }
-  FS_lapSheet99();
-  if (typeof FSNT_assertNoFail_ === 'function') FSNT_assertNoFail_();
-  if (typeof FSNT_markSummary_ === 'function') FSNT_markSummary_('00. Tổng hợp', 'NN');
-  if (typeof FSNT_sapXepSheetNN_TT_ === 'function') FSNT_sapXepSheetNN_TT_();
-  SpreadsheetApp.getUi().alert('Đã chạy xong mô hình theo nguồn Định mức (NN) và kiểm tra Sheet 99.');
+  FS_FIX_chayNN();
 }
 
-/**
- * Chạy toàn bộ mô hình theo nguồn Thực tế (TT).
- * Kết quả được chốt tại sheet 00.Tổng hợp_thực tế.
- */
+/** Chạy mô hình Thực tế (TT) và phục hồi bản NN đã chốt. */
 function FS_chayToanBoThucTe() {
-  FS_chayKichBanThucTe();
-  SpreadsheetApp.getUi().alert('Đã chạy xong mô hình theo nguồn Thực tế (TT), chốt tại 00.Tổng hợp_thực tế và kiểm tra Sheet 99.');
+  FS_FIX_chayTT();
 }
