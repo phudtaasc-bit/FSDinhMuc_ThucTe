@@ -37,6 +37,7 @@ function FS_chayKichBanDinhMuc() {
   FSNT_runScenario_('NN');
   FSNT_assertNoFail_();
   FSNT_markSummary_(FSNT_CFG.SUMMARY_NN, 'NN');
+  FSNT_sapXepSheetNN_TT_();
   SpreadsheetApp.flush();
 }
 
@@ -73,6 +74,7 @@ function FS_chayKichBanThucTe() {
     // Khôi phục trạng thái NN, kể cả khi quá trình TT phát sinh lỗi.
     FSNT_restoreSheetInPlace_(ss, FSNT_CFG.BACKUP_TECH_NN, FSNT_CFG.TECH_NN);
     FSNT_restoreSummary_(ss);
+    FSNT_sapXepSheetNN_TT_();
   }
 
   SpreadsheetApp.flush();
@@ -224,6 +226,38 @@ function FSNT_markSummary_(sheetName, scenario) {
     const cleanTitle = title.replace(/\s*\[(?:ĐỊNH MỨC \(NN\)|THỰC TẾ \(TT\))\]\s*$/i, '');
     sheet.getRange('A2').setValue(cleanTitle + ' [' + label + ']');
   }
+}
+
+/**
+ * Sắp xếp các sheet chính để dễ theo dõi:
+ * 1. 00. Tổng hợp
+ * 2. 00.Tổng hợp_thực tế
+ * 01A. Kỹ thuật_thực tế nằm ngay sau 01A. Kỹ thuật.
+ */
+function FSNT_sapXepSheetNN_TT_() {
+  const ss = SpreadsheetApp.getActive();
+
+  FSNT_moveSheetTo_(ss, FSNT_CFG.SUMMARY_NN, 1);
+  FSNT_moveSheetTo_(ss, FSNT_CFG.SUMMARY_TT, 2);
+
+  const techNN = ss.getSheetByName(FSNT_CFG.TECH_NN);
+  const techTT = ss.getSheetByName(FSNT_CFG.TECH_TT);
+  if (techNN && techTT) {
+    const techNNIndex = ss.getSheets().findIndex(sheet => sheet.getSheetId() === techNN.getSheetId());
+    if (techNNIndex >= 0) {
+      FSNT_moveSheetTo_(ss, FSNT_CFG.TECH_TT, techNNIndex + 2);
+    }
+  }
+}
+
+function FSNT_moveSheetTo_(ss, sheetName, position) {
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return;
+
+  const maxPosition = ss.getSheets().length;
+  const targetPosition = Math.max(1, Math.min(position, maxPosition));
+  ss.setActiveSheet(sheet);
+  ss.moveActiveSheet(targetPosition);
 }
 
 function FSNT_assertNoFail_() {
