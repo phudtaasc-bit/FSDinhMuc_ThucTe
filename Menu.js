@@ -39,6 +39,7 @@ function FS_chayToanBo() {
   FS_lapSheet99();
   if (typeof FSNT_assertNoFail_ === 'function') FSNT_assertNoFail_();
   if (typeof FSNT_markSummary_ === 'function') FSNT_markSummary_('00. Tổng hợp', 'NN');
+  if (typeof FSNT_sapXepSheetNN_TT_ === 'function') FSNT_sapXepSheetNN_TT_();
   SpreadsheetApp.getUi().alert('Đã chạy xong mô hình theo nguồn Định mức (NN) và kiểm tra Sheet 99.');
 }
 
