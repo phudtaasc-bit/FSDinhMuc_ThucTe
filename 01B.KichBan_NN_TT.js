@@ -2,8 +2,10 @@ const FSNT_CFG = Object.freeze({
   SUMMARY_NN: '00. Tổng hợp',
   SUMMARY_TT: '00.Tổng hợp_thực tế',
   CHECKS: '99. Kiểm tra',
-  TECH: '01A. Kỹ thuật',
-  BACKUP_NN: '__FSNT_BACKUP_NN__',
+  TECH_NN: '01A. Kỹ thuật',
+  TECH_TT: '01A. Kỹ thuật_thực tế',
+  BACKUP_SUMMARY_NN: '__FSNT_BACKUP_SUMMARY_NN__',
+  BACKUP_TECH_NN: '__FSNT_BACKUP_TECH_NN__',
   LEGACY_TRIGGER_HANDLER: 'FSNT_tiepTucHaiKichBan_'
 });
 
@@ -26,6 +28,10 @@ function FS_huyChayHaiKichBan() {
   SpreadsheetApp.getUi().alert('Đã xóa các trigger NN/TT cũ.');
 }
 
+/**
+ * Chạy mô hình Định mức.
+ * 01A. Kỹ thuật luôn được trả về trạng thái NN.
+ */
 function FS_chayKichBanDinhMuc() {
   FSNT_deleteLegacyTriggers_();
   FSNT_runScenario_('NN');
@@ -34,17 +40,39 @@ function FS_chayKichBanDinhMuc() {
   SpreadsheetApp.flush();
 }
 
+/**
+ * Chạy mô hình Thực tế.
+ * - Lưu riêng dữ liệu kỹ thuật TT tại 01A. Kỹ thuật_thực tế.
+ * - Chốt kết quả TT tại 00.Tổng hợp_thực tế.
+ * - Khôi phục 01A. Kỹ thuật và 00. Tổng hợp về trạng thái NN sau khi chạy.
+ */
 function FS_chayKichBanThucTe() {
   FSNT_deleteLegacyTriggers_();
   const ss = SpreadsheetApp.getActive();
-  FSNT_backupCurrentNN_(ss);
+
+  // Luôn tái tạo NN trước khi sao lưu để tránh lấy nhầm trạng thái TT của lần chạy trước.
+  FS_taoKyThuatTuDauVao('NN');
+  SpreadsheetApp.flush();
+  FSNT_assertActiveScenario_('NN');
+
+  FSNT_backupSheet_(ss, FSNT_CFG.TECH_NN, FSNT_CFG.BACKUP_TECH_NN);
+  FSNT_backupSheet_(ss, FSNT_CFG.SUMMARY_NN, FSNT_CFG.BACKUP_SUMMARY_NN);
 
   try {
-    FSNT_runScenario_('TT');
+    // Dựng bộ kỹ thuật TT trên sheet làm việc 01A rồi lưu bản riêng để kiểm tra/audit.
+    FS_taoKyThuatTuDauVao('TT');
+    SpreadsheetApp.flush();
+    FSNT_assertActiveScenario_('TT');
+    FSNT_snapshotSheet_(ss, FSNT_CFG.TECH_NN, FSNT_CFG.TECH_TT, false);
+
+    // Chạy các sheet lõi từ đúng bộ kỹ thuật TT đang hiện hành.
+    FSNT_runModelFromActiveTech_('TT');
     FSNT_assertNoFail_();
     FSNT_snapshotSummary_(FSNT_CFG.SUMMARY_TT, 'TT');
   } finally {
-    FSNT_restoreNN_(ss);
+    // Khôi phục trạng thái NN, kể cả khi quá trình TT phát sinh lỗi.
+    FSNT_restoreSheetInPlace_(ss, FSNT_CFG.BACKUP_TECH_NN, FSNT_CFG.TECH_NN);
+    FSNT_restoreSummary_(ss);
   }
 
   SpreadsheetApp.flush();
@@ -53,6 +81,11 @@ function FS_chayKichBanThucTe() {
 function FSNT_runScenario_(scenario) {
   FS_taoKyThuatTuDauVao(scenario);
   SpreadsheetApp.flush();
+  FSNT_assertActiveScenario_(scenario);
+  FSNT_runModelFromActiveTech_(scenario);
+}
+
+function FSNT_runModelFromActiveTech_(scenario) {
   FSNT_assertActiveScenario_(scenario);
 
   FSNT_callRequired_('FS_lapSheet02');
@@ -84,7 +117,7 @@ function FSNT_runScenario_(scenario) {
 }
 
 function FSNT_assertActiveScenario_(expected) {
-  const sheet = SpreadsheetApp.getActive().getSheetByName(FSNT_CFG.TECH);
+  const sheet = SpreadsheetApp.getActive().getSheetByName(FSNT_CFG.TECH_NN);
   if (!sheet) throw new Error('Không tìm thấy sheet 01A. Kỹ thuật.');
 
   const values = sheet.getDataRange().getValues();
@@ -101,18 +134,48 @@ function FSNT_assertActiveScenario_(expected) {
   }
 }
 
-function FSNT_backupCurrentNN_(ss) {
-  const oldBackup = ss.getSheetByName(FSNT_CFG.BACKUP_NN);
+function FSNT_backupSheet_(ss, sourceName, backupName) {
+  const oldBackup = ss.getSheetByName(backupName);
   if (oldBackup) ss.deleteSheet(oldBackup);
 
-  const source = ss.getSheetByName(FSNT_CFG.SUMMARY_NN);
-  if (!source) return;
+  const source = ss.getSheetByName(sourceName);
+  if (!source) return null;
 
-  source.copyTo(ss).setName(FSNT_CFG.BACKUP_NN).hideSheet();
+  return source.copyTo(ss).setName(backupName).hideSheet();
 }
 
-function FSNT_restoreNN_(ss) {
-  const backup = ss.getSheetByName(FSNT_CFG.BACKUP_NN);
+/**
+ * Khôi phục nội dung vào đúng sheet đích để không làm thay đổi sheetId và các tham chiếu.
+ */
+function FSNT_restoreSheetInPlace_(ss, backupName, targetName) {
+  const backup = ss.getSheetByName(backupName);
+  if (!backup) return;
+
+  let target = ss.getSheetByName(targetName);
+  if (!target) target = ss.insertSheet(targetName);
+
+  const sourceRows = Math.max(1, backup.getMaxRows());
+  const sourceCols = Math.max(1, backup.getMaxColumns());
+  if (target.getMaxRows() < sourceRows) {
+    target.insertRowsAfter(target.getMaxRows(), sourceRows - target.getMaxRows());
+  }
+  if (target.getMaxColumns() < sourceCols) {
+    target.insertColumnsAfter(target.getMaxColumns(), sourceCols - target.getMaxColumns());
+  }
+
+  target.getRange(1, 1, target.getMaxRows(), target.getMaxColumns()).breakApart();
+  target.clear();
+  backup.getRange(1, 1, sourceRows, sourceCols).copyTo(target.getRange(1, 1, sourceRows, sourceCols));
+
+  target.setFrozenRows(backup.getFrozenRows());
+  target.setFrozenColumns(backup.getFrozenColumns());
+  for (let c = 1; c <= sourceCols; c++) target.setColumnWidth(c, backup.getColumnWidth(c));
+
+  ss.deleteSheet(backup);
+}
+
+function FSNT_restoreSummary_(ss) {
+  const backup = ss.getSheetByName(FSNT_CFG.BACKUP_SUMMARY_NN);
   if (!backup) return;
 
   const current = ss.getSheetByName(FSNT_CFG.SUMMARY_NN);
@@ -122,18 +185,30 @@ function FSNT_restoreNN_(ss) {
   FSNT_markSummary_(FSNT_CFG.SUMMARY_NN, 'NN');
 }
 
-function FSNT_snapshotSummary_(targetName, scenario) {
-  const ss = SpreadsheetApp.getActive();
-  const source = ss.getSheetByName(FSNT_CFG.SUMMARY_NN);
-  if (!source) throw new Error('Không tìm thấy sheet nguồn "' + FSNT_CFG.SUMMARY_NN + '".');
+/**
+ * Sao chép một sheet. freezeValues=true dùng cho báo cáo kết quả cần chốt số.
+ */
+function FSNT_snapshotSheet_(ss, sourceName, targetName, freezeValues) {
+  const source = ss.getSheetByName(sourceName);
+  if (!source) throw new Error('Không tìm thấy sheet nguồn "' + sourceName + '".');
 
   const existing = ss.getSheetByName(targetName);
   if (existing) ss.deleteSheet(existing);
 
   const snapshot = source.copyTo(ss).setName(targetName);
   SpreadsheetApp.flush();
-  const range = snapshot.getDataRange();
-  range.copyTo(range, SpreadsheetApp.CopyPasteType.PASTE_VALUES, false);
+
+  if (freezeValues) {
+    const range = snapshot.getDataRange();
+    range.copyTo(range, SpreadsheetApp.CopyPasteType.PASTE_VALUES, false);
+  }
+
+  return snapshot;
+}
+
+function FSNT_snapshotSummary_(targetName, scenario) {
+  const ss = SpreadsheetApp.getActive();
+  FSNT_snapshotSheet_(ss, FSNT_CFG.SUMMARY_NN, targetName, true);
   FSNT_markSummary_(targetName, scenario);
 }
 
